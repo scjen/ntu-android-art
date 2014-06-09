@@ -20,6 +20,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <map>
 
 #include "base/macros.h"
 #include "base/mutex.h"
@@ -522,7 +523,7 @@ class ClassLinker {
       SHARED_LOCKS_REQUIRED(Locks::mutator_lock_);
 
   // For use by ImageWriter to find DexCaches for its roots
-  const std::vector<mirror::DexCache*>& GetDexCaches() {
+  const std::map<const DexFile*, mirror::DexCache*>& GetDexCaches() {
     return dex_caches_;
   }
 
@@ -556,8 +557,9 @@ class ClassLinker {
   std::vector<const DexFile*> boot_class_path_;
 
   mutable ReaderWriterMutex dex_lock_ DEFAULT_MUTEX_ACQUIRED_AFTER;
-  std::vector<size_t> new_dex_cache_roots_ GUARDED_BY(dex_lock_);;
-  std::vector<mirror::DexCache*> dex_caches_ GUARDED_BY(dex_lock_);
+  std::vector<const DexFile*> new_dex_cache_roots_ GUARDED_BY(dex_lock_);;
+  //std::vector<mirror::DexCache*> dex_caches_ GUARDED_BY(dex_lock_);
+  std::map<const DexFile*, mirror::DexCache*> dex_caches_ GUARDED_BY(dex_lock_);
   std::vector<const OatFile*> oat_files_ GUARDED_BY(dex_lock_);
 
 
