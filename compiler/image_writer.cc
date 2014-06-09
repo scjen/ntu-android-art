@@ -261,8 +261,8 @@ void ImageWriter::ComputeEagerResolvedStringsCallback(Object* obj, void* arg) {
   }
   mirror::String* string = obj->AsString();
   const uint16_t* utf16_string = string->GetCharArray()->GetData() + string->GetOffset();
-  for (DexCache* dex_cache : Runtime::Current()->GetClassLinker()->GetDexCaches()) {
-    const DexFile& dex_file = *dex_cache->GetDexFile();
+  for (auto dex_cache : Runtime::Current()->GetClassLinker()->GetDexCaches()) {
+    const DexFile& dex_file = *dex_cache.second->GetDexFile();
     const DexFile::StringId* string_id;
     if (UNLIKELY(string->GetLength() == 0)) {
       string_id = dex_file.FindStringId("");
@@ -272,8 +272,8 @@ void ImageWriter::ComputeEagerResolvedStringsCallback(Object* obj, void* arg) {
     if (string_id != nullptr) {
       // This string occurs in this dex file, assign the dex cache entry.
       uint32_t string_idx = dex_file.GetIndexForStringId(*string_id);
-      if (dex_cache->GetResolvedString(string_idx) == NULL) {
-        dex_cache->SetResolvedString(string_idx, string);
+      if (dex_cache.second->GetResolvedString(string_idx) == NULL) {
+        dex_cache.second->SetResolvedString(string_idx, string);
       }
     }
   }
@@ -314,23 +314,23 @@ void ImageWriter::PruneNonImageClasses() {
 
   // Clear references to removed classes from the DexCaches.
   ArtMethod* resolution_method = runtime->GetResolutionMethod();
-  for (DexCache* dex_cache : class_linker->GetDexCaches()) {
-    for (size_t i = 0; i < dex_cache->NumResolvedTypes(); i++) {
-      Class* klass = dex_cache->GetResolvedType(i);
+  for (auto dex_cache : class_linker->GetDexCaches()) {
+    for (size_t i = 0; i < dex_cache.second->NumResolvedTypes(); i++) {
+      Class* klass = dex_cache.second->GetResolvedType(i);
       if (klass != NULL && !IsImageClass(klass)) {
-        dex_cache->SetResolvedType(i, NULL);
+        dex_cache.second->SetResolvedType(i, NULL);
       }
     }
-    for (size_t i = 0; i < dex_cache->NumResolvedMethods(); i++) {
-      ArtMethod* method = dex_cache->GetResolvedMethod(i);
+    for (size_t i = 0; i < dex_cache.second->NumResolvedMethods(); i++) {
+      ArtMethod* method = dex_cache.second->GetResolvedMethod(i);
       if (method != NULL && !IsImageClass(method->GetDeclaringClass())) {
-        dex_cache->SetResolvedMethod(i, resolution_method);
+        dex_cache.second->SetResolvedMethod(i, resolution_method);
       }
     }
-    for (size_t i = 0; i < dex_cache->NumResolvedFields(); i++) {
-      ArtField* field = dex_cache->GetResolvedField(i);
+    for (size_t i = 0; i < dex_cache.second->NumResolvedFields(); i++) {
+      ArtField* field = dex_cache.second->GetResolvedField(i);
       if (field != NULL && !IsImageClass(field->GetDeclaringClass())) {
-        dex_cache->SetResolvedField(i, NULL);
+        dex_cache.second->SetResolvedField(i, NULL);
       }
     }
   }
@@ -411,8 +411,8 @@ ObjectArray<Object>* ImageWriter::CreateImageRoots() const {
   ObjectArray<Object>* dex_caches = ObjectArray<Object>::Alloc(self, object_array_class.get(),
                                                                class_linker->GetDexCaches().size());
   int i = 0;
-  for (DexCache* dex_cache : class_linker->GetDexCaches()) {
-    dex_caches->Set<false>(i++, dex_cache);
+  for (auto dex_cache : class_linker->GetDexCaches()) {
+    dex_caches->Set<false>(i++, dex_cache.second);
   }
 
   // build an Object[] of the roots needed to restore the runtime

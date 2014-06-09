@@ -24,6 +24,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <map>
 
 #include "base/casts.h"
 #include "base/logging.h"
@@ -1101,11 +1102,11 @@ void ClassLinker::VisitRoots(RootCallback* callback, void* arg, VisitRootFlags f
   {
     ReaderMutexLock mu(self, dex_lock_);
     if ((flags & kVisitRootFlagAllRoots) != 0) {
-      for (mirror::DexCache*& dex_cache : dex_caches_) {
+      for (auto dex_cache : dex_caches_) {
         callback(reinterpret_cast<mirror::Object**>(&dex_cache), arg, 0, kRootVMInternal);
       }
     } else if ((flags & kVisitRootFlagNewRoots) != 0) {
-      for (size_t index : new_dex_cache_roots_) {
+      for (auto index : new_dex_cache_roots_) {
         callback(reinterpret_cast<mirror::Object**>(&dex_caches_[index]), arg, 0, kRootVMInternal);
       }
     }
@@ -2082,11 +2083,15 @@ void ClassLinker::AppendToBootClassPath(const DexFile& dex_file,
 
 bool ClassLinker::IsDexFileRegisteredLocked(const DexFile& dex_file) const {
   dex_lock_.AssertSharedHeld(Thread::Current());
-  for (size_t i = 0; i != dex_caches_.size(); ++i) {
-    if (dex_caches_[i]->GetDexFile() == &dex_file) {
+  std::map<const DexFile*, mirror::DexCache*>::const_iterator it = dex_caches_.find(&dex_file);
+  if (it != dex_caches_.end()){
       return true;
-    }
   }
+//  for (size_t i = 0; i != dex_caches_.size(); ++i) {
+//    if (dex_caches_[i]->GetDexFile() == &dex_file) {
+//      return true;
+//    }
+//  }
   return false;
 }
 
@@ -2101,11 +2106,11 @@ void ClassLinker::RegisterDexFileLocked(const DexFile& dex_file,
   CHECK(dex_cache.get() != NULL) << dex_file.GetLocation();
   CHECK(dex_cache->GetLocation()->Equals(dex_file.GetLocation()))
       << dex_cache->GetLocation()->ToModifiedUtf8() << " " << dex_file.GetLocation();
-  dex_caches_.push_back(dex_cache.get());
+  dex_caches_.insert(std::make_pair(&dex_file, dex_cache.get()));
   dex_cache->SetDexFile(&dex_file);
   if (log_new_dex_caches_roots_) {
     // TODO: This is not safe if we can remove dex caches.
-    new_dex_cache_roots_.push_back(dex_caches_.size() - 1);
+    new_dex_cache_roots_.push_back(&dex_file);
   }
 }
 
@@ -2140,33 +2145,49 @@ void ClassLinker::RegisterDexFile(const DexFile& dex_file,
 mirror::DexCache* ClassLinker::FindDexCache(const DexFile& dex_file) const {
   ReaderMutexLock mu(Thread::Current(), dex_lock_);
   // Search assuming unique-ness of dex file.
-  for (size_t i = 0; i != dex_caches_.size(); ++i) {
-    mirror::DexCache* dex_cache = dex_caches_[i];
-    if (dex_cache->GetDexFile() == &dex_file) {
-      return dex_cache;
-    }
+  std::map<const DexFile*, mirror::DexCache*>::const_iterator it = dex_caches_.find(&dex_file);
+  if (it != dex_caches_.end()) {
+      return it->second;
   }
+//  for (size_t i = 0; i != dex_caches_.size(); ++i) {
+//    mirror::DexCache* dex_cache = dex_caches_[i];
+//    if (dex_cache->GetDexFile() == &dex_file) {
+//      return dex_cache;
+//    }
+//  }
+
   // Search matching by location name.
   std::string location(dex_file.GetLocation());
-  for (size_t i = 0; i != dex_caches_.size(); ++i) {
-    mirror::DexCache* dex_cache = dex_caches_[i];
-    if (dex_cache->GetDexFile()->GetLocation() == location) {
-      return dex_cache;
-    }
+  for (auto dex_cache : dex_caches_) {
+      if (dex_cache.second->GetDexFile()->GetLocation() == location){
+          return dex_cache.second;
+      }
   }
+//  for (size_t i = 0; i != dex_caches_.size(); ++i) {
+//    mirror::DexCache* dex_cache = dex_caches_[i];
+//    if (dex_cache->GetDexFile()->GetLocation() == location) {
+//      return dex_cache;
+//    }
+//  }
+
   // Failure, dump diagnostic and abort.
-  for (size_t i = 0; i != dex_caches_.size(); ++i) {
-    mirror::DexCache* dex_cache = dex_caches_[i];
-    LOG(ERROR) << "Registered dex file " << i << " = " << dex_cache->GetDexFile()->GetLocation();
+  for (auto dex_cache : dex_caches_) {
+      if (dex_cache.second->GetDexFile()->GetLocation() == location){
+          LOG(ERROR) << "Registered dex file " << dex_cache.first << " = " << dex_cache.second->GetDexFile()->GetLocation();
+      }
   }
+//  for (size_t i = 0; i != dex_caches_.size(); ++i) {
+//    mirror::DexCache* dex_cache = dex_caches_[i];
+//    LOG(ERROR) << "Registered dex file " << i << " = " << dex_cache->GetDexFile()->GetLocation();
+//  }
   LOG(FATAL) << "Failed to find DexCache for DexFile " << location;
   return NULL;
 }
 
 void ClassLinker::FixupDexCaches(mirror::ArtMethod* resolution_method) const {
   ReaderMutexLock mu(Thread::Current(), dex_lock_);
-  for (size_t i = 0; i != dex_caches_.size(); ++i) {
-    dex_caches_[i]->Fixup(resolution_method);
+  for (auto dex_cache : dex_caches_) {
+      dex_cache.second->Fixup(resolution_method);
   }
 }
 
@@ -2959,9 +2980,9 @@ mirror::ArtMethod* ClassLinker::FindMethodForProxy(mirror::Class* proxy_class,
   {
     mirror::ObjectArray<mirror::Class>* resolved_types = proxy_method->GetDexCacheResolvedTypes();
     ReaderMutexLock mu(Thread::Current(), dex_lock_);
-    for (size_t i = 0; i != dex_caches_.size(); ++i) {
-      if (dex_caches_[i]->GetResolvedTypes() == resolved_types) {
-        dex_cache = dex_caches_[i];
+    for (auto dex_cache_tmp : dex_caches_) {
+      if (dex_cache_tmp.second->GetResolvedTypes() == resolved_types) {
+        dex_cache = dex_cache_tmp.second;
         break;
       }
     }
