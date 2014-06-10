@@ -1,0 +1,4 @@
+dhry.dex:	art -cp dhry.dex dhry
+scimark2.dex:	art -cp scimark2.dex jnt.scimark2.commandline
+Foo.dex:	art -cp Foo.dex Foo
+Bar.dex:	art -cp Bar.dex Bar
